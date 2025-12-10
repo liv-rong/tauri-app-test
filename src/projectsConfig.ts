@@ -18,8 +18,8 @@ export const projects: ProjectConfig[] = [
     id: 'studio',
     name: 'Studio 项目',
     description: '这是 Studio 应用项目',
-    path: 'studio/dist/index.html',
-    port: 5174, // 独立端口
+    path: 'http://127.0.0.1:8001/', // 使用内嵌服务器端口
+    port: 8001,
     windowConfig: {
       width: 1400,
       height: 900,
@@ -30,8 +30,8 @@ export const projects: ProjectConfig[] = [
     id: 'project2',
     name: '项目 2',
     description: '第二个应用项目',
-    path: 'project2/dist/index.html',
-    port: 5175, // 独立端口
+    path: 'http://127.0.0.1:8002/', // 使用内嵌服务器端口
+    port: 8002,
     windowConfig: {
       width: 1200,
       height: 800,
@@ -42,8 +42,8 @@ export const projects: ProjectConfig[] = [
     id: 'project3',
     name: '项目 3',
     description: '第三个应用项目',
-    path: 'project3/dist/index.html',
-    port: 5176, // 独立端口
+    path: 'http://127.0.0.1:8003/', // 使用内嵌服务器端口
+    port: 8003,
     windowConfig: {
       width: 1000,
       height: 700,

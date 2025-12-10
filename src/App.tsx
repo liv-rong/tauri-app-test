@@ -1,25 +1,20 @@
 import { useState } from "react";
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { resolveResource } from '@tauri-apps/api/path';
 import "./App.css";
 import BrowserNavbar from './BrowserNavbar';
 import { projects, ProjectConfig } from './projectsConfig';
 
 function App() {
   const [loading, setLoading] = useState<string | null>(null);
+
+  const [projectUrl, setProjectUrl] = useState<string | null>(null);
+
   const handleUrlChange = (newUrl: string): void => {
     console.log('URL 改变为:', newUrl);
-    // 如果是外部 URL，在新窗口打开
+    // 外部 http/https 直接新窗口打开；其余（tauri:// 或 file）内嵌 iframe 展示
     if (newUrl.startsWith('http://') || newUrl.startsWith('https://')) {
-      // 检查是否是项目 URL（localhost:5174/5175/5176）
-      const isProjectUrl = newUrl.match(/http:\/\/localhost:(5174|5175|5176)/);
-      if (isProjectUrl) {
-        // 项目 URL，在当前窗口跳转
-        window.location.href = newUrl;
-      } else {
-        // 外部 URL，在新窗口打开
-        window.open(newUrl, '_blank');
-      }
+      window.open(newUrl, '_blank');
+    } else {
+      setProjectUrl(newUrl);
     }
   };
 
@@ -34,45 +29,19 @@ function App() {
     }
   };
 
-  // 打开项目（使用 window.location.href 在当前窗口跳转）
+  // 打开项目（直接使用 HTTP URL）
   const openProject = async (project: ProjectConfig) => {
     try {
       setLoading(project.id);
       console.log('正在打开项目:', project.name);
 
-      let projectUrl: string;
+      // 直接使用内嵌服务器的 HTTP URL
+      const projectUrl = project.path;
+      console.log('项目 URL:', projectUrl);
 
-      // 检测是否在开发模式
-      const isDev = window.location.hostname === 'localhost' ||
-                    window.location.hostname === '127.0.0.1' ||
-                    window.location.protocol === 'http:';
-
-      if (isDev) {
-        // 开发模式：使用独立端口的 HTTP 服务器
-        // 每个项目有独立的端口，完全隔离
-        const port = project.port || 5174; // 默认端口 5174
-        projectUrl = `http://localhost:${port}/`;
-        console.log('开发模式 - 使用独立端口:', projectUrl, `(端口: ${port})`);
-      } else {
-        // 生产模式：使用 resolveResource 解析资源路径
-        try {
-          const resourcePath = await resolveResource(`projects/${project.path}`);
-          projectUrl = convertFileSrc(resourcePath);
-          console.log('生产模式 - Resource Path:', resourcePath);
-          console.log('生产模式 - Asset URL:', projectUrl);
-        } catch (resourceError) {
-          console.error('resolveResource 失败:', resourceError);
-          throw new Error(`无法解析项目资源路径: ${resourceError}`);
-        }
-      }
-
-      // 使用 window.location.href 在当前窗口跳转到项目页面
-      // 服务器端会自动注入 base 标签和路径修复脚本
-      // 类似 Flutter 的 WebView 架构，但使用页面替换方式
-      window.location.href = projectUrl;
-
-      // 注意：这里不会执行到，因为页面已经跳转了
-      // setLoading(null);
+      // 在页面内用 iframe 内嵌项目
+      setProjectUrl(projectUrl);
+      setLoading(null);
     } catch (error) {
       console.error('打开项目出错:', error);
       alert(`打开项目失败: ${error}`);
@@ -117,13 +86,40 @@ function App() {
               </div>
             </button>
           ))}
+
         </div>
       </div>
+
+      {projectUrl ? (
+        <div
+          style={{
+            marginTop: 24,
+            width: '100%',
+            height: '720px',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+            border: '1px solid #e2e8f0',
+            background: '#f8fafc'
+          }}
+        >
+          <iframe
+            title="project-frame"
+            src={projectUrl}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+          />
+        </div>
+      ) : (
+        <div style={{ marginTop: 24, color: '#64748b' }}>
+          请选择上方的项目以加载对应资源
+        </div>
+      )}
 
       {/* 浏览器导航栏 */}
       <div style={{ marginTop: '30px' }}>
         <BrowserNavbar
-          initialUrl="https://www.google.com"
+          initialUrl="http://localhost:1420/"
           onUrlChange={handleUrlChange}
           onNavigate={handleNavigate}
         />

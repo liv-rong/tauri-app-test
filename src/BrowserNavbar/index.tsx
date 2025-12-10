@@ -12,7 +12,7 @@ interface BrowserNavbarProps {
 type NavigationAction = 'back' | 'forward' | 'refresh' | 'home';
 
 const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
-  initialUrl = 'https://example.com',
+  initialUrl = 'http://localhost:1420/',
   onUrlChange,
   onNavigate
 }) => {
@@ -99,7 +99,7 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
 
   // 主页功能
   const handleHome = useCallback((): void => {
-    const homeUrl = 'https://www.google.com';
+    const homeUrl = 'http://localhost:1420/';
     setUrl(homeUrl);
 
     setHistory(prev => [...prev.slice(0, historyIndex + 1), homeUrl]);
@@ -186,7 +186,10 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
           aria-label="刷新"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M3 21a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 16M21 21v-5h-5"/>
+            <path d="M4 4v5h5" />
+            <path d="M20 20v-5h-5" />
+            <path d="M5 9a7 7 0 0 1 12.17-4.17" />
+            <path d="M19 15a7 7 0 0 1-12.17 4.17" />
           </svg>
         </button>
 
@@ -207,18 +210,19 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
       {/* 地址栏 */}
       <form className="url-bar-container" onSubmit={handleSubmit} role="search">
         <div className="url-input-wrapper">
-          {/* 安全状态指示器 */}
-          <div
-            className={`security-indicator ${url.startsWith('https://') ? 'secure' : 'insecure'}`}
-            title={url.startsWith('https://') ? '连接安全' : '连接不安全'}
-            aria-label={url.startsWith('https://') ? '安全连接' : '不安全连接'}
-            role="img"
-          >
-            {url.startsWith('https://') ? '🔒' : '⚠️'}
-          </div>
-
           <input
             ref={inputRef}
+            //不要边框 显示
+            style={{
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              borderRadius: '0',
+              padding: '0',
+              margin: '0',
+              fontSize: '14px',
+              color: '#202124',
+            }}
             type="text"
             className={`url-input ${!isValidUrl ? 'error' : ''}`}
             value={url}
