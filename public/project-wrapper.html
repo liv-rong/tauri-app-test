@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目加载中...</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #project-container {
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="project-container" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
+
+    <script>
+        // 从 URL 参数获取项目路径
+        const urlParams = new URLSearchParams(window.location.search);
+        const projectPath = urlParams.get('path');
+
+        if (projectPath) {
+            // 加载项目到 iframe
+            const iframe = document.getElementById('project-container');
+            iframe.src = projectPath;
+
+            // 在 iframe 加载完成后注入路径修复脚本
+            iframe.addEventListener('load', function() {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+                    // 注入路径修复脚本
+                    const script = iframeDoc.createElement('script');
+                    script.textContent = `
+                        (function() {
+                            'use strict';
+
+                            // 修复资源路径：将绝对路径转换为相对路径
+                            function fixResourcePath(url) {
+                                if (url && url.startsWith('/') && !url.startsWith('//')) {
+                                    return url.substring(1);
+                                }
+                                return url;
+                            }
+
+                            // 修复元素属性
+                            function fixElement(element, attribute) {
+                                const value = element.getAttribute(attribute);
+                                if (value) {
+                                    const fixed = fixResourcePath(value);
+                                    if (fixed !== value) {
+                                        element.setAttribute(attribute, fixed);
+                                        console.log('[PathFixer] 修复路径:', value, '->', fixed);
+                                    }
+                                }
+                            }
+
+                            // 修复所有现有资源
+                            function fixExistingResources() {
+                                document.querySelectorAll('link[href]').forEach(link => fixElement(link, 'href'));
+                                document.querySelectorAll('script[src]').forEach(script => fixElement(script, 'src'));
+                                document.querySelectorAll('img[src]').forEach(img => fixElement(img, 'src'));
+                            }
+
+                            // 监听动态添加的元素
+                            function setupMutationObserver() {
+                                const observer = new MutationObserver(mutations => {
+                                    mutations.forEach(mutation => {
+                                        mutation.addedNodes.forEach(node => {
+                                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                                const element = node;
+                                                if (element.tagName === 'LINK' && element.hasAttribute('href')) fixElement(element, 'href');
+                                                if (element.tagName === 'SCRIPT' && element.hasAttribute('src')) fixElement(element, 'src');
+                                                if (element.tagName === 'IMG' && element.hasAttribute('src')) fixElement(element, 'src');
+                                                element.querySelectorAll('link[href], script[src], img[src]').forEach(el => {
+                                                    if (el.tagName === 'LINK') fixElement(el, 'href');
+                                                    else if (el.tagName === 'SCRIPT') fixElement(el, 'src');
+                                                    else if (el.tagName === 'IMG') fixElement(el, 'src');
+                                                });
+                                            }
+                                        });
+                                    });
+                                });
+                                observer.observe(document.head, { childList: true, subtree: true });
+                                observer.observe(document.body, { childList: true, subtree: true });
+                            }
+
+                            fixExistingResources();
+                            setupMutationObserver();
+                            console.log('[PathFixer] 路径修复脚本已初始化');
+                        })();
+                    `;
+                    iframeDoc.head.appendChild(script);
+                } catch (e) {
+                    console.error('无法注入路径修复脚本（可能是跨域问题）:', e);
+                }
+            });
+        } else {
+            document.body.innerHTML = '<h1>错误：未指定项目路径</h1>';
+        }
+    </script>
+</body>
+</html>
+

@@ -21,7 +21,24 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$RESOURCE/**"]
+        "scope": [
+          "$RESOURCE/**",
+          "$RESOURCE/**/*",
+          "$RESOURCE/projects/**",
+          "$RESOURCE/projects/**/*",
+          "$RESOURCE/projects/studio/**",
+          "$RESOURCE/projects/studio/**/*",
+          "$RESOURCE/projects/studio/dist/**",
+          "$RESOURCE/projects/studio/dist/**/*",
+          "$RESOURCE/projects/project2/**",
+          "$RESOURCE/projects/project2/**/*",
+          "$RESOURCE/projects/project2/dist/**",
+          "$RESOURCE/projects/project2/dist/**/*",
+          "$RESOURCE/projects/project3/**",
+          "$RESOURCE/projects/project3/**/*",
+          "$RESOURCE/projects/project3/dist/**",
+          "$RESOURCE/projects/project3/dist/**/*"
+        ]
       }
     },
     "withGlobalTauri": true
