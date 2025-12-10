@@ -9,12 +9,29 @@ function App() {
   const [loading, setLoading] = useState<string | null>(null);
   const handleUrlChange = (newUrl: string): void => {
     console.log('URL 改变为:', newUrl);
-    // 这里可以触发页面加载或其他操作
+    // 如果是外部 URL，在新窗口打开
+    if (newUrl.startsWith('http://') || newUrl.startsWith('https://')) {
+      // 检查是否是项目 URL（localhost:5174/5175/5176）
+      const isProjectUrl = newUrl.match(/http:\/\/localhost:(5174|5175|5176)/);
+      if (isProjectUrl) {
+        // 项目 URL，在当前窗口跳转
+        window.location.href = newUrl;
+      } else {
+        // 外部 URL，在新窗口打开
+        window.open(newUrl, '_blank');
+      }
+    }
   };
 
   const handleNavigate = (url: string, action?: 'back' | 'forward' | 'refresh' | 'home'): void => {
     console.log(`导航: ${action || 'direct'} -> ${url}`);
-    // 处理导航操作
+    if (action === 'refresh') {
+      // 刷新当前页面
+      window.location.reload();
+    } else {
+      // 其他导航操作
+      handleUrlChange(url);
+    }
   };
 
   // 打开项目（使用 window.location.href 在当前窗口跳转）

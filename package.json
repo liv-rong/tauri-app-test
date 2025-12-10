@@ -8,8 +8,7 @@
     "serve:projects": "node servers-manager.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "fix:paths": "node scripts/inject-path-fixer.js"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -23,7 +22,6 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "concurrently": "^9.2.1",
-    "serve": "^14.2.5",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

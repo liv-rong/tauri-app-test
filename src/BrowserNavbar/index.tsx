@@ -90,11 +90,12 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
     }
   }, [historyIndex, history, onUrlChange, onNavigate]);
 
-  // 刷新功能
+  // 刷新功能 - 实际导航到当前 URL
   const handleRefresh = useCallback((): void => {
     onNavigate?.(url, 'refresh');
-    window.location.reload();
-  }, [url, onNavigate]);
+    // 触发导航回调，让父组件处理刷新
+    onUrlChange?.(url);
+  }, [url, onNavigate, onUrlChange]);
 
   // 主页功能
   const handleHome = useCallback((): void => {
@@ -159,7 +160,9 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
           disabled={!canGoBack}
           aria-label="后退"
         >
-          ←
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
         </button>
 
         {/* 前进按钮 */}
@@ -170,7 +173,9 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
           disabled={!canGoForward}
           aria-label="前进"
         >
-          →
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
         </button>
 
         {/* 刷新按钮 */}
@@ -180,7 +185,9 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
           title="刷新 (F5)"
           aria-label="刷新"
         >
-          ↻
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M3 21a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 16M21 21v-5h-5"/>
+          </svg>
         </button>
 
         {/* 主页按钮 */}
@@ -190,7 +197,10 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
           title="主页"
           aria-label="主页"
         >
-          🏠
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
         </button>
       </div>
 
@@ -216,8 +226,19 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
               setUrl(e.target.value);
               setIsValidUrl(true);
             }}
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+              // Enter 键提交
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSubmit(e as any);
+              }
+              // Escape 键清除
+              if (e.key === 'Escape') {
+                handleClear();
+              }
+            }}
             placeholder="输入网址或搜索"
-            title="地址栏 (Ctrl+L 聚焦)"
+            title="地址栏 (Ctrl+L 聚焦, Enter 转到)"
             aria-label="网址"
             spellCheck="false"
             autoCorrect="off"
@@ -230,30 +251,17 @@ const BrowserNavbar: React.FC<BrowserNavbarProps> = ({
               type="button"
               className="clear-button"
               onClick={handleClear}
-              title="清除"
+              title="清除 (Esc)"
               aria-label="清除输入"
             >
-              ✕
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
             </button>
           )}
         </div>
-
-        <button
-          type="submit"
-          className="go-button"
-          title="转到"
-          aria-label="转到网址"
-        >
-          →
-        </button>
       </form>
-
-      {/* 历史记录指示器 */}
-      <div className="history-indicator" aria-label="历史记录位置">
-        <span className="history-count" aria-live="polite">
-          {historyIndex + 1} / {history.length}
-        </span>
-      </div>
 
       {/* 错误提示 */}
       {!isValidUrl && (
