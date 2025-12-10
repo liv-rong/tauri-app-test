@@ -4,6 +4,7 @@ export interface ProjectConfig {
   name: string;
   description: string;
   path: string; // 相对于 projects 目录的路径
+  port: number; // 开发模式下的独立端口
   windowConfig?: {
     width?: number;
     height?: number;
@@ -18,6 +19,7 @@ export const projects: ProjectConfig[] = [
     name: 'Studio 项目',
     description: '这是 Studio 应用项目',
     path: 'studio/dist/index.html',
+    port: 5174, // 独立端口
     windowConfig: {
       width: 1400,
       height: 900,
@@ -29,6 +31,7 @@ export const projects: ProjectConfig[] = [
     name: '项目 2',
     description: '第二个应用项目',
     path: 'project2/dist/index.html',
+    port: 5175, // 独立端口
     windowConfig: {
       width: 1200,
       height: 800,
@@ -40,6 +43,7 @@ export const projects: ProjectConfig[] = [
     name: '项目 3',
     description: '第三个应用项目',
     path: 'project3/dist/index.html',
+    port: 5176, // 独立端口
     windowConfig: {
       width: 1000,
       height: 700,

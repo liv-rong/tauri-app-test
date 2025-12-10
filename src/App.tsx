@@ -4,7 +4,6 @@ import { resolveResource } from '@tauri-apps/api/path';
 import "./App.css";
 import BrowserNavbar from './BrowserNavbar';
 import { projects, ProjectConfig } from './projectsConfig';
-import { openProjectWindow } from './utils/windowManager';
 
 function App() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -18,7 +17,7 @@ function App() {
     // 处理导航操作
   };
 
-  // 打开项目（使用 WebviewWindow 创建独立窗口）
+  // 打开项目（使用 window.location.href 在当前窗口跳转）
   const openProject = async (project: ProjectConfig) => {
     try {
       setLoading(project.id);
@@ -32,10 +31,11 @@ function App() {
                     window.location.protocol === 'http:';
 
       if (isDev) {
-        // 开发模式：使用 HTTP 服务器
-        // HTTP 服务器会自动处理资源路径，不需要修改项目文件
-        projectUrl = `http://localhost:5174/${project.path}`;
-        console.log('开发模式 - 使用 HTTP 服务器:', projectUrl);
+        // 开发模式：使用独立端口的 HTTP 服务器
+        // 每个项目有独立的端口，完全隔离
+        const port = project.port || 5174; // 默认端口 5174
+        projectUrl = `http://localhost:${port}/`;
+        console.log('开发模式 - 使用独立端口:', projectUrl, `(端口: ${port})`);
       } else {
         // 生产模式：使用 resolveResource 解析资源路径
         try {
@@ -49,17 +49,13 @@ function App() {
         }
       }
 
-      // 使用 WebviewWindow 创建独立窗口
-      // 每个项目在独立窗口中运行，互不影响
-      // 类似 Flutter 的 WebView 架构
-      await openProjectWindow(
-        project.id,
-        project.name,
-        projectUrl,
-        project.windowConfig
-      );
+      // 使用 window.location.href 在当前窗口跳转到项目页面
+      // 服务器端会自动注入 base 标签和路径修复脚本
+      // 类似 Flutter 的 WebView 架构，但使用页面替换方式
+      window.location.href = projectUrl;
 
-      setLoading(null);
+      // 注意：这里不会执行到，因为页面已经跳转了
+      // setLoading(null);
     } catch (error) {
       console.error('打开项目出错:', error);
       alert(`打开项目失败: ${error}`);

@@ -1,7 +1,8 @@
 /**
- * 自定义 HTTP 服务器
+ * 自定义 HTTP 服务器（单项目服务器）
  * 支持路径重写，解决项目中的绝对路径问题
- * 运行: node server.js
+ * 运行: node server.js [port] [projectPath]
+ * 例如: node server.js 5174 studio/dist
  */
 
 import http from 'http';
@@ -12,8 +13,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 5174;
+// 从命令行参数获取端口和项目路径
+const PORT = process.argv[2] ? parseInt(process.argv[2]) : 5174;
+const PROJECT_RELATIVE_PATH = process.argv[3] || 'studio/dist';
 const PROJECTS_DIR = path.join(__dirname, 'projects');
+const PROJECT_DIR = path.join(PROJECTS_DIR, PROJECT_RELATIVE_PATH);
 
 // MIME 类型映射
 const mimeTypes = {
@@ -39,32 +43,35 @@ function getMimeType(filePath) {
 }
 
 // 路径修复脚本（在服务器端注入到 HTML 中）
+// 多端口模式下，每个项目在根路径，所以 base href 就是 /
 const pathFixerScript = `
 <script>
 (function() {
   'use strict';
   const isTauriAsset = window.location.protocol === 'tauri:';
+  // 支持多个端口：5174, 5175, 5176
   const isHttpServer = window.location.hostname === 'localhost' &&
-                       (window.location.port === '5174' || window.location.port === '');
+                       ['5174', '5175', '5176'].includes(window.location.port);
 
   if (!isTauriAsset && !isHttpServer) return;
 
-  console.log('[PathFixer] 检测到项目页面，开始修复路径');
+  console.log('[PathFixer] 检测到项目页面，开始修复路径 (端口:', window.location.port, ')');
 
-  const currentPath = window.location.pathname;
-  const baseDir = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+  // 多端口模式下，base href 就是根路径
+  const baseDir = '/';
 
   function fixResourcePath(url) {
     if (!url) return url;
-    if (url.startsWith('/') && !url.startsWith('//')) {
-      return url.substring(1);
-    }
+    // 多端口模式下，绝对路径就是相对于项目根目录
+    // 例如：/_expo/static/css/... 保持不变（因为每个项目在根路径）
     return url;
   }
 
   function fixElement(element, attribute) {
     const value = element.getAttribute(attribute);
     if (value) {
+      // 多端口模式下，路径不需要修改
+      // 但为了兼容性，仍然检查
       const fixed = fixResourcePath(value);
       if (fixed !== value) {
         element.setAttribute(attribute, fixed);
@@ -134,31 +141,86 @@ const pathFixerScript = `
 </script>
 `;
 
-// 处理 HTML 文件：注入 base 标签和路径修复脚本
+// 返回主页按钮（在服务器端注入到项目页面）
+const backButton = `
+<div id="tauri-back-button" style="position: fixed; top: 10px; left: 10px; z-index: 99999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <button id="tauri-back-btn"
+          style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+          "
+          onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
+          onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
+    ← 返回主页
+  </button>
+  <script>
+    (function() {
+      const btn = document.getElementById('tauri-back-btn');
+      if (btn) {
+        btn.onclick = function() {
+          const protocol = window.location.protocol;
+          const hostname = window.location.hostname;
+
+          let homeUrl;
+          if (protocol === 'tauri:') {
+            homeUrl = 'tauri://localhost';
+          } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            homeUrl = 'http://localhost:1420/';
+          } else {
+            homeUrl = protocol + '//' + hostname + (window.location.port ? ':' + window.location.port : '') + '/';
+          }
+
+          console.log('[BackButton] 返回主页:', homeUrl);
+          window.location.href = homeUrl;
+        };
+      }
+    })();
+  </script>
+</div>
+`;
+
+// 处理 HTML 文件：注入 base 标签、路径修复脚本和返回按钮
 function processHtml(content, urlPath) {
-  // 计算 base href（相对于项目 dist 目录）
-  let baseHref = './';
-  const match = urlPath.match(/\/(studio|project2|project3)\/dist\//);
-  if (match) {
-    baseHref = `/${match[1]}/dist/`;
-  }
+  // 多端口模式下，每个项目在根路径，所以 base href 就是根路径
+  const baseHref = '/';
 
   // 检查是否已经包含 base 标签或路径修复脚本
-  if (content.includes('<base') || content.includes('PathFixer')) {
-    return content; // 已经处理过，直接返回
+  const alreadyProcessed = content.includes('<base') || content.includes('PathFixer');
+
+  // 注入 base 标签和路径修复脚本（如果还没有）
+  if (!alreadyProcessed) {
+    const headMatch = content.match(/<head[^>]*>/i);
+    if (headMatch) {
+      const headTag = headMatch[0];
+      const injection = `<base href="${baseHref}">${pathFixerScript}`;
+      content = content.replace(headTag, headTag + injection);
+    } else {
+      const htmlMatch = content.match(/<html[^>]*>/i);
+      if (htmlMatch) {
+        content = content.replace(htmlMatch[0], htmlMatch[0] + `<head><base href="${baseHref}">${pathFixerScript}</head>`);
+      }
+    }
   }
 
-  // 在 <head> 标签开始后立即注入 base 标签和路径修复脚本
-  const headMatch = content.match(/<head[^>]*>/i);
-  if (headMatch) {
-    const headTag = headMatch[0];
-    const injection = `<base href="${baseHref}">${pathFixerScript}`;
-    content = content.replace(headTag, headTag + injection);
-  } else {
-    // 如果没有 head 标签，在 <html> 后添加
-    const htmlMatch = content.match(/<html[^>]*>/i);
-    if (htmlMatch) {
-      content = content.replace(htmlMatch[0], htmlMatch[0] + `<head><base href="${baseHref}">${pathFixerScript}</head>`);
+  // 注入返回按钮（如果还没有）
+  if (!content.includes('tauri-back-button')) {
+    const bodyMatch = content.match(/<body[^>]*>/i);
+    if (bodyMatch) {
+      const bodyTag = bodyMatch[0];
+      content = content.replace(bodyTag, bodyTag + backButton);
+    } else {
+      const headCloseMatch = content.match(/<\/head>/i);
+      if (headCloseMatch) {
+        content = content.replace(headCloseMatch[0], headCloseMatch[0] + `<body>${backButton}`);
+      }
     }
   }
 
@@ -202,45 +264,29 @@ function serveFile(filePath, res, urlPath = '') {
   res.end(content);
 }
 
-function resolvePath(urlPath, referer = '') {
+function resolvePath(urlPath) {
   // 移除查询参数和 hash
   const cleanPath = urlPath.split('?')[0].split('#')[0];
 
-  // 处理绝对路径（以 / 开头，但不是项目路径）
-  // 例如：/_expo/static/css/... 需要根据 referer 确定项目目录
-  if (cleanPath.startsWith('/_expo/') || cleanPath.startsWith('/assets/') ||
-      (cleanPath.startsWith('/') && !cleanPath.startsWith('/studio/') &&
-       !cleanPath.startsWith('/project2/') && !cleanPath.startsWith('/project3/'))) {
+  // 多端口模式下，每个服务器只服务一个项目
+  // 所有路径都相对于 PROJECT_DIR（项目的 dist 目录）
 
-    // 从 referer 中提取项目名称
-    let projectName = null;
-    if (referer) {
-      const refererMatch = referer.match(/\/(studio|project2|project3)\//);
-      if (refererMatch) {
-        projectName = refererMatch[1];
-      }
+  // 处理绝对路径（以 / 开头）
+  // 例如：/_expo/static/css/... -> PROJECT_DIR/_expo/static/css/...
+  if (cleanPath.startsWith('/')) {
+    const resourcePath = path.join(PROJECT_DIR, cleanPath.substring(1));
+    if (fs.existsSync(resourcePath)) {
+      console.log(`  ✓ 找到资源: ${cleanPath} -> ${resourcePath}`);
+      return resourcePath;
+    } else {
+      console.log(`  ✗ 未找到资源: ${cleanPath} (在 ${PROJECT_DIR})`);
+      return null;
     }
-
-    // 如果无法从 referer 确定，尝试所有项目
-    const projects = projectName ? [projectName] : ['studio', 'project2', 'project3'];
-
-    for (const project of projects) {
-      const distPath = path.join(PROJECTS_DIR, project, 'dist', cleanPath.substring(1));
-      if (fs.existsSync(distPath)) {
-        console.log(`  ✓ 找到资源: ${cleanPath} -> ${distPath}`);
-        return distPath;
-      }
-    }
-
-    // 如果找不到，返回 404 路径
-    console.log(`  ✗ 未找到资源: ${cleanPath}`);
-    return null;
   }
 
   // 处理相对路径
-  // 例如：/studio/dist/index.html -> projects/studio/dist/index.html
-  const relativePath = cleanPath.startsWith('/') ? cleanPath.substring(1) : cleanPath;
-  const fullPath = path.join(PROJECTS_DIR, relativePath);
+  // 例如：index.html -> PROJECT_DIR/index.html
+  const fullPath = path.join(PROJECT_DIR, cleanPath);
 
   return fullPath;
 }
@@ -258,11 +304,10 @@ const server = http.createServer((req, res) => {
   }
 
   const urlPath = req.url || '/';
-  const referer = req.headers.referer || '';
-  console.log(`[${req.method}] ${urlPath}${referer ? ` (from: ${referer})` : ''}`);
+  console.log(`[${req.method}] ${urlPath}`);
 
   try {
-    const filePath = resolvePath(urlPath, referer);
+    const filePath = resolvePath(urlPath);
 
     if (!filePath || !fs.existsSync(filePath)) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -279,7 +324,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`🚀 Projects HTTP Server running on http://localhost:${PORT}`);
-  console.log(`📁 Serving from: ${PROJECTS_DIR}`);
+  console.log(`🚀 Project Server running on http://localhost:${PORT}`);
+  console.log(`📁 Serving from: ${PROJECT_DIR}`);
+  console.log(`📦 Project: ${PROJECT_RELATIVE_PATH}\n`);
 });
-

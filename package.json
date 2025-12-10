@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"pnpm serve:projects\"",
-    "serve:projects": "node server.js",
+    "serve:projects": "node servers-manager.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
