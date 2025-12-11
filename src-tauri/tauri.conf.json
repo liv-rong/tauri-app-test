@@ -18,16 +18,37 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self' myapp: asset: https://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' myapp: asset:; style-src 'self' 'unsafe-inline' myapp: asset:; img-src 'self' myapp: asset: https://asset.localhost data: blob:; font-src 'self' myapp: asset: https://asset.localhost data:; connect-src 'self' myapp: asset: https://asset.localhost; frame-src 'self' myapp: asset: https://asset.localhost;",
       "assetProtocol": {
         "enable": true,
         "scope": [
           "$RESOURCE/**",
           "$RESOURCE/**/*",
-          "$RESOURCE/**",
+          "$RESOURCE/resources/**",
+          "$RESOURCE/resources/**/*",
           "$RESOURCE/studio/**",
+          "$RESOURCE/studio/**/*",
+          "$RESOURCE/studio/dist/_expo/**",
+          "$RESOURCE/studio/dist/_expo/**/*",
+          "$RESOURCE/studio/dist/_expo/static/js/web/**",
+          "$RESOURCE/studio/dist/_expo/static/js/web/**/*",
+          "$RESOURCE/studio/dist/_expo/static/css/**",
+          "$RESOURCE/studio/dist/_expo/static/css/**/*",
+          "$RESOURCE/studio/dist/.well-known/**",
+          "$RESOURCE/studio/dist/.well-known/**/*",
+          "$RESOURCE/studio/dist/assets/**",
+          "$RESOURCE/studio/dist/assets/**/*",
           "$RESOURCE/project2/**",
-          "$RESOURCE/project3/**"
+          "$RESOURCE/project2/**/*",
+          "$RESOURCE/project3/**",
+          "$RESOURCE/project3/**/*",
+          "$RESOURCE/project3/dist/**",
+          "$RESOURCE/project3/dist/**/*",
+          "$RESOURCE/project3/dist/assets/**",
+          "$RESOURCE/project3/dist/assets/**/*",
+          "asset://localhost/env-config.is",
+          "asset://localhost/assets/index-626914f7.is",
+          "asset://localhost/assets/index-626914f7.is"
         ]
       }
     },
@@ -46,7 +67,7 @@
     "resources": [
       "resources/studio",
       "resources/project2",
-      "resources/project3/"
+      "resources/project3"
     ]
   },
   "plugins": {

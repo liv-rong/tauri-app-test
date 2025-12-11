@@ -1,17 +1,15 @@
-// 导入标准库中的文件系统操作模块，用于读取文件
-use std::fs;
-// 导入标准库中的输入输出模块，包含 Read 和 Write trait，用于读写数据流
-use std::io::{Read, Write};
-// 导入标准库中的网络模块，TcpListener 用于监听连接，TcpStream 用于处理连接
-use std::net::{TcpListener, TcpStream};
-// 导入标准库中的路径模块，PathBuf 用于处理文件路径
-use std::path::PathBuf;
-// 导入标准库中的线程模块，用于创建新线程
-use std::thread;
-// 导入标准库中的时间模块，Duration 用于表示时间间隔
-use std::time::Duration;
 // 导入 Tauri 框架的 Manager trait，用于管理应用程序
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use serde::{Deserialize, Serialize};
+
+// 窗口配置结构体，用于接收前端传递的窗口配置参数
+#[derive(Debug, Serialize, Deserialize)]
+struct WindowConfig {
+    width: Option<f64>,
+    height: Option<f64>,
+    resizable: Option<bool>,
+    fullscreen: Option<bool>,
+}
 
 // 了解更多关于 Tauri 命令的信息，请访问 https://tauri.app/develop/calling-rust/
 // 这是一个 Tauri 命令的宏，标记这个函数可以被前端 JavaScript 调用
@@ -22,128 +20,102 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-// 定义一个启动简单 HTTP 服务器的函数，接收端口号和目录路径作为参数
-fn start_simple_server(port: u16, dir: PathBuf) {
-    // 创建一个 TCP 监听器，绑定到本地地址 127.0.0.1 和指定端口
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        // 如果绑定失败，使用 expect 输出错误信息并终止程序
-        .expect(&format!("Failed to bind to port {}", port));
-
-    // 打印服务器启动信息，显示服务器地址和服务的目录
-    println!("静态文件服务器启动: http://127.0.0.1:{} -> {:?}", port, dir);
-
-    // 循环监听传入的连接请求
-    for stream in listener.incoming() {
-        // 使用 match 匹配连接结果
-        match stream {
-            // 如果连接成功
-            Ok(stream) => {
-                // 克隆目录路径，因为要在新线程中使用
-                let dir_clone = dir.clone();
-                // 创建一个新线程来处理这个连接
-                thread::spawn(move || {
-                    // 在新线程中调用处理请求的函数
-                    handle_request(stream, dir_clone);
-                });
-            }
-            // 如果连接失败
-            Err(e) => {
-                // 打印连接错误信息到标准错误输出
-                eprintln!("连接错误: {}", e);
-            }
+// 定义一个获取资源目录路径的命令，返回资源目录的字符串路径
+// 这个函数用于前端获取资源目录路径，以便使用 asset:// 协议加载本地文件
+#[tauri::command]
+// 接收应用程序句柄，返回资源目录路径的字符串
+fn get_resource_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
+    // 尝试获取资源目录路径
+    match app_handle.path().resource_dir() {
+        // 如果成功获取路径
+        Ok(path) => {
+            // 将路径转换为字符串，如果失败则返回错误
+            path.to_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "无法将路径转换为字符串".to_string())
         }
+        // 如果获取失败，返回错误信息
+        Err(e) => Err(format!("获取资源目录失败: {}", e)),
     }
 }
 
-// 定义一个处理 HTTP 请求的函数，接收 TCP 流和基础目录路径
-fn handle_request(mut stream: TcpStream, base_dir: PathBuf) {
-    // 创建一个 1024 字节的缓冲区，用于读取请求数据
-    let mut buffer = [0; 1024];
-    // 尝试从流中读取数据到缓冲区
-    if let Ok(_) = stream.read(&mut buffer) {
-        // 将缓冲区中的字节转换为字符串，使用 from_utf8_lossy 处理可能的无效 UTF-8 字符
-        let request = String::from_utf8_lossy(&buffer);
+// 打开项目的命令，创建新窗口并加载对应项目的 dist 文件
+// 使用自定义协议 myapp:// 加载本地资源文件
+#[tauri::command]
+fn open_project(
+    app_handle: tauri::AppHandle,
+    project_name: String,
+    window_config: Option<WindowConfig>,
+) -> Result<(), String> {
+    // 构建使用自定义协议的 URL，只使用项目名作为路径
+    // 协议处理器会自动添加 dist/index.html
+    // 这样 URL 会是 myapp://studio/ 而不是 myapp://studio/dist/index.html
+    // 这对于客户端路由（如 Expo Router）很重要
+    let custom_url = format!("myapp://{}/", project_name);
+    println!("🚀 正在打开项目: {}", project_name);
+    println!("🔗 使用自定义协议 URL: {}", custom_url);
 
-        // 解析请求路径
-        // 默认路径设置为 /index.html
-        let mut path = "/index.html";
-        // 获取请求的第一行（HTTP 请求行）
-        if let Some(first_line) = request.lines().next() {
-            // 将第一行按空白字符分割成多个部分
-            let parts: Vec<&str> = first_line.split_whitespace().collect();
-            // 检查是否是 GET 请求，并且有足够的参数
-            if parts.len() > 1 && parts[0] == "GET" {
-                // 获取请求的路径（parts[1] 是 URL 路径）
-                path = parts[1];
-                // 如果路径是根路径，则默认返回 index.html
-                if path == "/" {
-                    path = "/index.html";
-                }
-            }
-        }
+    // 生成唯一的窗口标签，避免重复窗口
+    let window_label = format!("project-{}", project_name);
+    println!("🏷️  窗口标签: {}", window_label);
 
-        // 构建文件路径
-        // 将请求路径去掉开头的斜杠，然后与基础目录拼接
-        let file_path = base_dir.join(path.trim_start_matches('/'));
-
-        // 读取文件并响应
-        // 尝试读取文件内容
-        if let Ok(contents) = fs::read(&file_path) {
-            // 根据文件扩展名获取对应的 Content-Type
-            let content_type = get_content_type(&file_path);
-            // 构建 HTTP 响应头，包含状态码、内容类型、内容长度和跨域允许头
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\n\r\n",
-                content_type,
-                contents.len()
-            );
-
-            // 将响应头写入 TCP 流
-            let _ = stream.write_all(response.as_bytes());
-            // 将文件内容写入 TCP 流
-            let _ = stream.write_all(&contents);
-        } else {
-            // 如果文件读取失败，返回 404 错误响应
-            let response = "HTTP/1.1 404 NOT FOUND\r\n\r\n404 Not Found";
-            // 将 404 响应写入 TCP 流
-            let _ = stream.write_all(response.as_bytes());
-        }
-
-        // 刷新流，确保所有数据都被发送
-        let _ = stream.flush();
+    // 检查窗口是否已经存在
+    if let Some(existing_window) = app_handle.get_webview_window(&window_label) {
+        // 如果窗口已存在，聚焦并显示该窗口
+        println!("♻️  窗口已存在，聚焦窗口: {}", window_label);
+        existing_window
+            .set_focus()
+            .map_err(|e| format!("聚焦窗口失败: {}", e))?;
+        return Ok(());
     }
-}
 
-// 定义一个根据文件路径获取 Content-Type 的函数，返回静态字符串引用
-fn get_content_type(path: &PathBuf) -> &'static str {
-    // 尝试获取文件扩展名
-    if let Some(ext) = path.extension() {
-        // 根据文件扩展名匹配对应的 MIME 类型
-        match ext.to_str().unwrap_or("") {
-            // HTML 文件
-            "html" => "text/html",
-            // CSS 样式文件
-            "css" => "text/css",
-            // JavaScript 脚本文件
-            "js" => "application/javascript",
-            // JSON 数据文件
-            "json" => "application/json",
-            // PNG 图片文件
-            "png" => "image/png",
-            // JPEG 图片文件（支持 jpg 和 jpeg 两种扩展名）
-            "jpg" | "jpeg" => "image/jpeg",
-            // GIF 动图文件
-            "gif" => "image/gif",
-            // SVG 矢量图文件
-            "svg" => "image/svg+xml",
-            // ICO 图标文件
-            "ico" => "image/x-icon",
-            // 其他未知类型的文件，默认返回纯文本类型
-            _ => "text/plain",
+    // 获取窗口配置，如果没有传递则使用默认值
+    let config = window_config.unwrap_or(WindowConfig {
+        width: Some(1200.0),
+        height: Some(800.0),
+        resizable: Some(true),
+        fullscreen: Some(false),
+    });
+    println!("⚙️  窗口配置: {:?}", config);
+
+    // 创建新窗口，使用自定义协议 myapp:// 加载本地文件
+    let mut builder = WebviewWindowBuilder::new(
+        &app_handle,
+        window_label.clone(),
+        WebviewUrl::External(custom_url.parse().unwrap())
+    )
+        .title(format!("项目 - {}", project_name))
+        .min_inner_size(800.0, 600.0);
+
+    // 应用窗口配置
+    if let Some(width) = config.width {
+        if let Some(height) = config.height {
+            builder = builder.inner_size(width, height);
         }
-    } else {
-        // 如果没有扩展名，默认返回纯文本类型
-        "text/plain"
+    }
+
+    if let Some(resizable) = config.resizable {
+        builder = builder.resizable(resizable);
+    }
+
+    if let Some(fullscreen) = config.fullscreen {
+        if fullscreen {
+            builder = builder.fullscreen(true);
+        }
+    }
+
+    // 构建并显示窗口
+    println!("🔨 开始构建窗口...");
+    match builder.build() {
+        Ok(_) => {
+            println!("✅ 窗口创建成功: {}", window_label);
+            println!("🎉 窗口将加载: {}", custom_url);
+            Ok(())
+        }
+        Err(e) => {
+            println!("❌ 窗口创建失败: {}", e);
+            Err(format!("打开窗口失败: {}", e))
+        }
     }
 }
 
@@ -155,96 +127,114 @@ pub fn run() {
     tauri::Builder::default()
         // 初始化 opener 插件，用于打开外部链接
         .plugin(tauri_plugin_opener::init())
-        // 设置应用程序初始化逻辑
-        .setup(|app| {
-            // 克隆应用程序句柄，用于后续操作
-            let app_handle = app.handle().clone();
+        // 注册自定义协议 "myapp"
+        .register_uri_scheme_protocol("myapp", |app_handle, request| {
+            // 获取请求的 URL
+            let uri = request.uri().to_string();
+            println!("🔗 收到自定义协议请求: {}", uri);
 
-            // 在开发模式下使用相对路径，生产模式使用资源目录
-            // 根据编译模式选择资源目录路径
-            let base_dir = if cfg!(debug_assertions) {
-                // 开发模式：从 src-tauri 目录向上找到项目根目录，然后进入 src-tauri/resources
-                // 获取当前工作目录（通常是 src-tauri 目录）
-                std::env::current_dir()
-                    // 如果获取失败则终止程序
-                    .unwrap()
-                    // 获取父目录（项目根目录）
-                    .parent()  // 从 src-tauri 回到项目根目录
-                    // 如果获取失败则终止程序
-                    .unwrap()
-                    // 拼接资源目录路径
-                    .join("src-tauri/resources")
+            // 解析 URL，移除 "myapp://" 前缀
+            let path = uri.strip_prefix("myapp://").unwrap_or(&uri);
+            println!("📂 解析后的路径: {}", path);
+
+            // 去掉查询参数和 hash
+            let path = path.split('?').next().unwrap_or(path);
+            let path = path.split('#').next().unwrap_or(path);
+
+            // 处理路径开头的 "./" 或 "/"
+            let path = path.trim_start_matches("./").trim_start_matches('/');
+
+            // 如果路径为空或以 "/" 结尾，默认加载 index.html
+            let path = if path.is_empty() || path.ends_with('/') {
+                format!("{}index.html", path)
             } else {
-                // 生产模式：使用打包后的资源目录
-                // 获取应用程序的资源目录路径
-                app_handle.path().resource_dir().unwrap()
+                path.to_string()
             };
 
-            // 打印资源目录路径，方便调试
-            println!("资源目录: {:?}", base_dir);
+            println!("🎯 最终路径: {}", path);
 
-            // 启动三个静态文件服务器
-            // 构建 Studio 项目的目录路径
-            let studio_dir = base_dir.join("studio/dist");
-            // 构建 Project2 项目的目录路径
-            let project2_dir = base_dir.join("project2/dist");
-            // 构建 Project3 项目的目录路径
-            let project3_dir = base_dir.join("project3/dist");
-
-            // Studio 项目 - 端口 8001
-            // 检查 Studio 目录是否存在
-            if studio_dir.exists() {
-                // 克隆目录路径，因为要在新线程中使用
-                let studio_path = studio_dir.clone();
-                // 创建新线程启动 Studio 项目的服务器
-                thread::spawn(move || {
-                    // 在端口 8001 上启动服务器
-                    start_simple_server(8001, studio_path);
-                });
+            // 获取资源目录路径
+            let resource_dir = if cfg!(debug_assertions) {
+                // 开发模式：使用项目目录下的 resources
+                std::env::current_dir()
+                    .unwrap()
+                    .join("resources")
             } else {
-                // 如果目录不存在，打印警告信息
-                println!("Studio 目录不存在: {:?}", studio_dir);
+                // 生产模式：使用打包后的资源目录
+                app_handle.app_handle().path().resource_dir()
+                    .expect("无法获取资源目录")
+            };
+
+            // 拼接完整的文件路径
+            let file_path = resource_dir.join(&path);
+            println!("📁 完整文件路径: {:?}", file_path);
+
+            // 检查文件是否存在
+            if !file_path.exists() {
+                println!("❌ 文件不存在: {:?}", file_path);
+                return tauri::http::Response::builder()
+                    .status(404)
+                    .body(format!("文件不存在: {}", path).into_bytes())
+                    .unwrap();
             }
 
-            // Project2 - 端口 8002
-            // 检查 Project2 目录是否存在
-            if project2_dir.exists() {
-                // 克隆目录路径，因为要在新线程中使用
-                let project2_path = project2_dir.clone();
-                // 创建新线程启动 Project2 的服务器
-                thread::spawn(move || {
-                    // 在端口 8002 上启动服务器
-                    start_simple_server(8002, project2_path);
-                });
+            // 读取文件内容
+            match std::fs::read(&file_path) {
+                Ok(content) => {
+                    println!("✅ 文件读取成功，大小: {} bytes", content.len());
+
+                    // 根据文件扩展名设置 Content-Type
+                    let mime_type = match file_path.extension().and_then(|s| s.to_str()) {
+                        Some("html") => "text/html",
+                        Some("css") => "text/css",
+                        Some("js") => "application/javascript",
+                        Some("json") => "application/json",
+                        Some("png") => "image/png",
+                        Some("jpg") | Some("jpeg") => "image/jpeg",
+                        Some("svg") => "image/svg+xml",
+                        Some("woff") | Some("woff2") => "font/woff2",
+                        Some("ttf") => "font/ttf",
+                        _ => "application/octet-stream",
+                    };
+
+                    println!("📝 Content-Type: {}", mime_type);
+
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", mime_type)
+                        .body(content)
+                        .unwrap()
+                }
+                Err(e) => {
+                    println!("❌ 文件读取失败: {}", e);
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .body(format!("读取文件失败: {}", e).into_bytes())
+                        .unwrap()
+                }
+            }
+        })
+        // 设置应用程序初始化逻辑
+        .setup(|app| {
+            // 获取应用程序句柄，用于后续操作
+            let app_handle = app.handle().clone();
+
+            // 在开发模式下打印资源目录路径，方便调试
+            if cfg!(debug_assertions) {
+                let dev_resource_dir = std::env::current_dir()
+                    .unwrap()
+                    .join("resources");
+                println!("🔧 开发模式资源目录: {:?}", dev_resource_dir);
             } else {
-                // 如果目录不存在，打印警告信息
-                println!("Project2 目录不存在: {:?}", project2_dir);
+                if let Ok(resource_dir) = app_handle.path().resource_dir() {
+                    println!("📦 生产模式资源目录: {:?}", resource_dir);
+                }
             }
 
-            // Project3 - 端口 8003
-            // 检查 Project3 目录是否存在
-            if project3_dir.exists() {
-                // 克隆目录路径，因为要在新线程中使用
-                let project3_path = project3_dir.clone();
-                // 创建新线程启动 Project3 的服务器
-                thread::spawn(move || {
-                    // 在端口 8003 上启动服务器
-                    start_simple_server(8003, project3_path);
-                });
-            } else {
-                // 如果目录不存在，打印警告信息
-                println!("Project3 目录不存在: {:?}", project3_dir);
-            }
-
-            // 等待服务器启动
-            // 让当前线程休眠 500 毫秒，给服务器启动时间
-            thread::sleep(Duration::from_millis(500));
-
-            // 返回 Ok 表示初始化成功
             Ok(())
         })
-        // 注册 Tauri 命令处理器，将 greet 函数注册为可调用的命令
-        .invoke_handler(tauri::generate_handler![greet])
+        // 注册 Tauri 命令处理器，将 greet、get_resource_dir 和 open_project 函数注册为可调用的命令
+        .invoke_handler(tauri::generate_handler![greet, get_resource_dir, open_project])
         // 运行 Tauri 应用程序，使用自动生成的上下文
         .run(tauri::generate_context!())
         // 如果运行失败，输出错误信息并终止程序

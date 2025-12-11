@@ -2,6 +2,8 @@ import { useState } from "react";
 import "./App.css";
 import BrowserNavbar from './BrowserNavbar';
 import { projects, ProjectConfig } from './projectsConfig';
+// 导入 Tauri 的 invoke 函数，用于调用 Rust 命令
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 function App() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -10,7 +12,7 @@ function App() {
 
   const handleUrlChange = (newUrl: string): void => {
     console.log('URL 改变为:', newUrl);
-    // 外部 http/https 直接新窗口打开；其余（tauri:// 或 file）内嵌 iframe 展示
+    // 外部 http/https 直接新窗口打开；asset:// 协议的内嵌 iframe 展示
     if (newUrl.startsWith('http://') || newUrl.startsWith('https://')) {
       window.open(newUrl, '_blank');
     } else {
@@ -29,29 +31,56 @@ function App() {
     }
   };
 
-  // 打开项目（直接使用 HTTP URL）
+  // 打开项目（使用独立窗口，避免 iframe 路径问题）
   const openProject = async (project: ProjectConfig) => {
     try {
       setLoading(project.id);
-      console.log('正在打开项目:', project.name);
+      console.log('🚀 正在打开项目:', project.name);
 
-      // 直接使用内嵌服务器的 HTTP URL
-      const projectUrl = project.path;
-      console.log('项目 URL:', projectUrl);
+      // 调用 Rust 命令创建新窗口，传递窗口配置
+      await invoke('open_project', {
+        projectName: project.id,
+        windowConfig: project.windowConfig || null
+      });
 
-      // 在页面内用 iframe 内嵌项目
-      setProjectUrl(projectUrl);
+
+
+      console.log('✅ 项目窗口创建成功:', project.name);
       setLoading(null);
+
     } catch (error) {
-      console.error('打开项目出错:', error);
+      console.error('💥 打开项目失败:', error);
       alert(`打开项目失败: ${error}`);
       setLoading(null);
     }
   };
 
+  // 添加一个测试函数
+  const testAssetAccess = () => {
+    const testPaths = [
+      'studio/dist/index.html',
+      '/studio/dist/index.html',
+      'resources/studio/dist/index.html'
+    ];
+
+    testPaths.forEach(testPath => {
+      const testUrl = convertFileSrc(testPath);
+      console.log(`Test path: ${testPath} -> ${testUrl}`);
+    });
+  };
+
   return (
     <main className="container">
       <h1>Welcome to Tauri + React</h1>
+
+      {/* 测试按钮 */}
+      <button
+        onClick={testAssetAccess}
+        style={{ marginBottom: '20px', padding: '10px', background: '#f0f0f0' }}
+      >
+        🧪 测试 Asset 路径转换（查看控制台）
+      </button>
+      {/* <iframe src="project1/dist/index.html"></iframe> */}
 
       {/* 项目选择器 */}
       <div style={{ marginBottom: '20px' }}>
@@ -107,7 +136,26 @@ function App() {
             title="project-frame"
             src={projectUrl}
             style={{ width: '100%', height: '100%', border: 'none' }}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation"
+            onLoad={() => {
+              console.log('✅ iframe 加载完成:', projectUrl);
+              // 尝试访问 iframe 内容，检查是否有错误
+              try {
+                const iframe = document.querySelector('iframe[title="project-frame"]') as HTMLIFrameElement;
+                if (iframe?.contentWindow) {
+                  console.log('✅ iframe 内容窗口可访问');
+                }
+              } catch (e) {
+                console.warn('⚠️ 无法访问 iframe 内容（可能是跨域限制）:', e);
+              }
+            }}
+            onError={(e) => {
+              console.error('❌ iframe 加载错误:', e);
+              console.error('❌ 错误详情:', {
+                src: projectUrl,
+                error: e
+              });
+            }}
           />
         </div>
       ) : (
