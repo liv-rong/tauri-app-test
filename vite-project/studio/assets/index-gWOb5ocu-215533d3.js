@@ -1,0 +1,1 @@
+import{m as t,Y as i}from"./BaseSelectComp-10db33f3.js";import"./index-626914f7.js";import"./index.esm-0b9baea5.js";import"./canvas-0ce26167.js";import"./index-383ddd63.js";const n=({size:e=60})=>t.jsx("div",{style:{display:"flex",height:"100%",alignItems:"center",justifyContent:"center"},children:t.jsx(i,{style:{fontSize:e,color:"#eab308"}})});export{n as default};
