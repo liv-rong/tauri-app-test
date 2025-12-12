@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { invoke } from '@tauri-apps/api/core';
 import "./App.css";
 import { projects, ProjectConfig } from './projectsConfig';
 
@@ -7,47 +8,121 @@ function App() {
   const [currentProject, setCurrentProject] = useState<string | null>(null);
   // 加载状态
   const [loading, setLoading] = useState<string | null>(null);
-  // 已加载的项目集合
-  const [loadedProjects, setLoadedProjects] = useState<Set<string>>(new Set());
-  // iframe refs - 用于保持状态
-  const iframeRefs = useRef<{ [key: string]: HTMLIFrameElement | null }>({});
+  // 已创建的 WebView 集合
+  const [createdWebViews, setCreatedWebViews] = useState<Set<string>>(new Set());
+  // 容器引用，用于获取位置和大小
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // 打开项目（在当前窗口的 iframe 中加载）
-  const openProject = (project: ProjectConfig) => {
+  // 获取容器的位置和大小信息
+  const getContainerBounds = () => {
+    if (!containerRef.current) {
+      return { x: 0, y: 60, width: 1000, height: 600 }; // 默认值
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+  };
+
+  // 创建项目窗口
+  const createProjectWindow = async (project: ProjectConfig) => {
+    try {
+      const bounds = getContainerBounds();
+      
+      await invoke('create_project_window', {
+        config: {
+          projectId: project.id,
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          visible: false // 先创建为隐藏状态
+        }
+      });
+      
+      setCreatedWebViews(prev => new Set(prev).add(project.id));
+      console.log('✅ 项目窗口创建成功:', project.name);
+    } catch (error) {
+      console.error('❌ 项目窗口创建失败:', error);
+      alert(`创建项目窗口失败: ${error}`);
+    }
+  };
+
+  // 显示项目窗口
+  const showProjectWindow = async (projectId: string) => {
+    try {
+      const params = { projectId: projectId };
+      console.log('调用show_project_window参数:', JSON.stringify(params));
+      await invoke('show_project_window', params);
+      setCurrentProject(projectId);
+      console.log('🔄 项目窗口显示成功:', projectId);
+    } catch (error) {
+      console.error('❌ 项目窗口显示失败:', error);
+      alert(`显示项目窗口失败: ${error}`);
+    }
+  };
+
+  // 隐藏其他项目窗口
+  const hideOtherProjectWindows = async (currentProjectId: string) => {
+    try {
+      for (const projectId of createdWebViews) {
+        if (projectId !== currentProjectId) {
+          const params = { projectId: projectId };
+          console.log('调用hide_project_window参数:', JSON.stringify(params));
+          await invoke('hide_project_window', params);
+        }
+      }
+    } catch (error) {
+      console.error('❌ 隐藏其他项目窗口失败:', error);
+    }
+  };
+
+  // 打开项目
+  const openProject = async (project: ProjectConfig) => {
     console.log('🚀 正在打开项目:', project.name);
+    setLoading(project.id);
 
-    // 如果项目已经加载过，直接切换，不显示 loading
-    if (loadedProjects.has(project.id)) {
-      console.log('✅ 项目已加载，直接切换:', project.name);
-      setCurrentProject(project.id);
-    } else {
-      // 新项目，显示 loading
-      setLoading(project.id);
-      setCurrentProject(project.id);
-    }
-  };
+    try {
+      // 如果项目窗口还未创建，先创建
+      if (!createdWebViews.has(project.id)) {
+        await createProjectWindow(project);
+      }
 
-  // iframe 加载完成
-  const handleIframeLoad = (projectId: string) => {
-    console.log('✅ 项目加载完成:', projectId);
+      // 隐藏其他项目窗口
+      await hideOtherProjectWindows(project.id);
 
-    // 标记项目已加载
-    setLoadedProjects(prev => new Set(prev).add(projectId));
-
-    // 清除 loading
-    if (projectId === loading) {
+      // 显示当前项目窗口
+      await showProjectWindow(project.id);
+    } catch (error) {
+      console.error('❌ 打开项目失败:', error);
+    } finally {
       setLoading(null);
     }
   };
 
-  // iframe 加载出错
-  const handleIframeError = (projectId: string, error: any) => {
-    console.error('❌ 项目加载失败:', projectId, error);
-    if (projectId === currentProject) {
-      setLoading(null);
-    }
-    alert(`加载项目失败: ${projectId}`);
-  };
+  // 注意：由于我们现在使用的是独立窗口而非单窗口内嵌WebView，
+  // 所以不再需要调整大小的功能，每个项目窗口都是独立的
+  // 移除以下响应式调整代码
+
+  // 监听窗口大小变化 - 暂时移除，因为使用独立窗口
+  // useEffect(() => {
+  //   const handleResize = () => {
+  //     setTimeout(resizeAllWebViews, 100);
+  //   };
+  //   window.addEventListener('resize', handleResize);
+  //   return () => window.removeEventListener('resize', handleResize);
+  // }, [createdWebViews]);
+
+  // 当容器引用变化时 - 暂时移除
+  // useEffect(() => {
+  //   if (containerRef.current && createdWebViews.size > 0) {
+  //     setTimeout(resizeAllWebViews, 100);
+  //   }
+  // }, [containerRef.current, createdWebViews]);
 
   return (
     <div style={{
@@ -111,40 +186,18 @@ function App() {
         </div>
       </nav>
 
-      {/* iframe 容器 */}
-      <div style={{
-        flex: 1,
-        position: 'relative',
-        background: '#f5f5f5',
-        overflow: 'hidden'
-      }}>
+      {/* WebView 容器 */}
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          position: 'relative',
+          background: '#f5f5f5',
+          overflow: 'hidden'
+        }}
+      >
         {currentProject ? (
-          // 懒加载策略：只渲染已经访问过的项目
           <>
-            {projects
-              .filter(project => loadedProjects.has(project.id) || project.id === currentProject)
-              .map(project => (
-                <iframe
-                  key={project.id}
-                  ref={(el) => { iframeRefs.current[project.id] = el; }}
-                  src={`myapp://${project.id}/`}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    display: currentProject === project.id ? 'block' : 'none',
-                    background: 'white'
-                  }}
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation allow-downloads"
-                  onLoad={() => handleIframeLoad(project.id)}
-                  onError={(e) => handleIframeError(project.id, e)}
-                  title={`${project.name} - 项目窗口`}
-                />
-              ))}
-
             {/* 加载遮罩 */}
             {loading && (
               <div style={{
@@ -180,10 +233,26 @@ function App() {
                   color: '#667eea',
                   fontWeight: '600'
                 }}>
-                  正在加载项目...
+                  正在创建项目窗口...
                 </p>
               </div>
             )}
+
+            {/* WebView 提示 */}
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              background: 'rgba(102, 126, 234, 0.9)',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '20px',
+              fontSize: '14px',
+              fontWeight: '600',
+              zIndex: 999
+            }}>
+              🌐 独立窗口: {projects.find(p => p.id === currentProject)?.name}
+            </div>
           </>
         ) : (
           // 欢迎页面

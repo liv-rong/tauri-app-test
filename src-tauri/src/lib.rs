@@ -1,14 +1,102 @@
 // 导入 Tauri 框架的 Manager trait，用于管理应用程序
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::Manager;
 use serde::{Deserialize, Serialize};
 
-// 窗口配置结构体，用于接收前端传递的窗口配置参数
+// WebView 配置结构体
 #[derive(Debug, Serialize, Deserialize)]
-struct WindowConfig {
-    width: Option<f64>,
-    height: Option<f64>,
-    resizable: Option<bool>,
-    fullscreen: Option<bool>,
+struct WebViewConfig {
+    #[serde(rename = "projectId")]
+    project_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    visible: bool,
+}
+
+// 简化的窗口管理命令 - 使用现有的 window API 而非 webview API
+#[tauri::command]
+async fn create_project_window(
+    app_handle: tauri::AppHandle,
+    config: WebViewConfig,
+) -> Result<(), String> {
+    let window_label = format!("project_{}", config.project_id);
+    let url = format!("myapp://{}/", config.project_id);
+
+    // 检查窗口是否已存在
+    if app_handle.get_webview_window(&window_label).is_some() {
+        return Ok(()); // 已存在，直接返回
+    }
+
+    // 创建新窗口
+    let _window = tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        &window_label,
+        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL解析失败: {}", e))?),
+    )
+    .inner_size(config.width, config.height)
+    .position(config.x, config.y)
+    .resizable(true)
+    .visible(config.visible)
+    .title(&format!("项目: {}", config.project_id))
+    .build()
+    .map_err(|e| format!("创建窗口失败: {}", e))?;
+
+    println!("✅ 项目窗口创建成功: {}", config.project_id);
+    Ok(())
+}
+
+// 显示项目窗口 - 修改参数名为projectId
+#[tauri::command]
+async fn show_project_window(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    println!("收到显示窗口请求，项目ID: {}", project_id);
+    let window_label = format!("project_{}", project_id);
+
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        window.show().map_err(|e| format!("显示窗口失败: {}", e))?;
+        window.set_focus().map_err(|e| format!("聚焦窗口失败: {}", e))?;
+        println!("🔄 项目窗口显示成功: {}", project_id);
+    } else {
+        return Err(format!("窗口不存在: {}", project_id));
+    }
+
+    Ok(())
+}
+
+// 隐藏项目窗口 - 修改参数名为projectId
+#[tauri::command]
+async fn hide_project_window(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    println!("收到隐藏窗口请求，项目ID: {}", project_id);
+    let window_label = format!("project_{}", project_id);
+
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        window.hide().map_err(|e| format!("隐藏窗口失败: {}", e))?;
+        println!("🙈 项目窗口隐藏成功: {}", project_id);
+    }
+
+    Ok(())
+}
+
+// 关闭项目窗口 - 修改参数名为projectId
+#[tauri::command]
+async fn close_project_window(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    let window_label = format!("project_{}", project_id);
+
+    if let Some(window) = app_handle.get_webview_window(&window_label) {
+        window.close().map_err(|e| format!("关闭窗口失败: {}", e))?;
+        println!("🗑️ 项目窗口关闭成功: {}", project_id);
+    }
+
+    Ok(())
 }
 
 // 了解更多关于 Tauri 命令的信息，请访问 https://tauri.app/develop/calling-rust/
@@ -39,84 +127,11 @@ fn get_resource_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-// 打开项目的命令，创建新窗口并加载对应项目的 dist 文件
-// 使用自定义协议 myapp:// 加载本地资源文件
+// 简单的命令 - 前端会使用 iframe，这里不需要复杂的窗口管理
+// 保留这个命令以防未来需要
 #[tauri::command]
-fn open_project(
-    app_handle: tauri::AppHandle,
-    project_name: String,
-    window_config: Option<WindowConfig>,
-) -> Result<(), String> {
-    // 构建使用自定义协议的 URL，只使用项目名作为路径
-    // 协议处理器会自动添加 dist/index.html
-    // 这样 URL 会是 myapp://studio/ 而不是 myapp://studio/dist/index.html
-    // 这对于客户端路由（如 Expo Router）很重要
-    let custom_url = format!("myapp://{}/", project_name);
-    println!("🚀 正在打开项目: {}", project_name);
-    println!("🔗 使用自定义协议 URL: {}", custom_url);
-
-    // 生成唯一的窗口标签，避免重复窗口
-    let window_label = format!("project-{}", project_name);
-    println!("🏷️  窗口标签: {}", window_label);
-
-    // 检查窗口是否已经存在
-    if let Some(existing_window) = app_handle.get_webview_window(&window_label) {
-        // 如果窗口已存在，聚焦并显示该窗口
-        println!("♻️  窗口已存在，聚焦窗口: {}", window_label);
-        existing_window
-            .set_focus()
-            .map_err(|e| format!("聚焦窗口失败: {}", e))?;
-        return Ok(());
-    }
-
-    // 获取窗口配置，如果没有传递则使用默认值
-    let config = window_config.unwrap_or(WindowConfig {
-        width: Some(1200.0),
-        height: Some(800.0),
-        resizable: Some(true),
-        fullscreen: Some(false),
-    });
-    println!("⚙️  窗口配置: {:?}", config);
-
-    // 创建新窗口，使用自定义协议 myapp:// 加载本地文件
-    let mut builder = WebviewWindowBuilder::new(
-        &app_handle,
-        window_label.clone(),
-        WebviewUrl::External(custom_url.parse().unwrap())
-    )
-        .title(format!("项目 - {}", project_name))
-        .min_inner_size(800.0, 600.0);
-
-    // 应用窗口配置
-    if let Some(width) = config.width {
-        if let Some(height) = config.height {
-            builder = builder.inner_size(width, height);
-        }
-    }
-
-    if let Some(resizable) = config.resizable {
-        builder = builder.resizable(resizable);
-    }
-
-    if let Some(fullscreen) = config.fullscreen {
-        if fullscreen {
-            builder = builder.fullscreen(true);
-        }
-    }
-
-    // 构建并显示窗口
-    println!("🔨 开始构建窗口...");
-    match builder.build() {
-        Ok(_) => {
-            println!("✅ 窗口创建成功: {}", window_label);
-            println!("🎉 窗口将加载: {}", custom_url);
-            Ok(())
-        }
-        Err(e) => {
-            println!("❌ 窗口创建失败: {}", e);
-            Err(format!("打开窗口失败: {}", e))
-        }
-    }
+fn get_project_url(project_id: String) -> String {
+    format!("myapp://{}/", project_id)
 }
 
 // 这是一个条件编译属性，如果是移动平台，则使用移动端入口点
@@ -233,8 +248,18 @@ pub fn run() {
 
             Ok(())
         })
-        // 注册 Tauri 命令处理器，将 greet、get_resource_dir 和 open_project 函数注册为可调用的命令
-        .invoke_handler(tauri::generate_handler![greet, get_resource_dir, open_project])
+        // 初始化插件
+        .plugin(tauri_plugin_opener::init())
+        // 注册 Tauri 命令处理器
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_resource_dir,
+            get_project_url,
+            create_project_window,
+            show_project_window,
+            hide_project_window,
+            close_project_window
+        ])
         // 运行 Tauri 应用程序，使用自动生成的上下文
         .run(tauri::generate_context!())
         // 如果运行失败，输出错误信息并终止程序

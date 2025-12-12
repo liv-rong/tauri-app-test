@@ -12,13 +12,18 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-app-test",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "项目管理器",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self' myapp: asset: https://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' myapp: asset:; style-src 'self' 'unsafe-inline' myapp: asset:; img-src 'self' myapp: asset: https://asset.localhost data: blob:; font-src 'self' myapp: asset: https://asset.localhost data:; connect-src 'self' myapp: asset: https://asset.localhost; frame-src 'self' myapp: asset: https://asset.localhost;",
+      "csp": "default-src 'self' myapp: asset: https://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' myapp: asset:; style-src 'self' 'unsafe-inline' myapp: asset:; img-src 'self' myapp: asset: https://asset.localhost data: blob:; font-src 'self' myapp: asset: https://asset.localhost data:; connect-src 'self' myapp: asset: https://asset.localhost https://studio-server.jova.bio https://*.jova.bio; frame-src 'self' myapp: asset: https://asset.localhost;",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -69,6 +74,10 @@
   },
   "plugins": {
     "window": {
+      "all": true,
+      "create": true
+    },
+    "webview": {
       "all": true,
       "create": true
     }
