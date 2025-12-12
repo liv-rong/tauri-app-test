@@ -45,10 +45,7 @@
           "$RESOURCE/project3/dist/**",
           "$RESOURCE/project3/dist/**/*",
           "$RESOURCE/project3/dist/assets/**",
-          "$RESOURCE/project3/dist/assets/**/*",
-          "asset://localhost/env-config.is",
-          "asset://localhost/assets/index-626914f7.is",
-          "asset://localhost/assets/index-626914f7.is"
+          "$RESOURCE/project3/dist/assets/**/*"
         ]
       }
     },

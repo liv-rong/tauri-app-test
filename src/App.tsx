@@ -1,178 +1,302 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import "./App.css";
-import BrowserNavbar from './BrowserNavbar';
 import { projects, ProjectConfig } from './projectsConfig';
-// 导入 Tauri 的 invoke 函数，用于调用 Rust 命令
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 function App() {
+  // 当前选中的项目
+  const [currentProject, setCurrentProject] = useState<string | null>(null);
+  // 加载状态
   const [loading, setLoading] = useState<string | null>(null);
+  // 已加载的项目集合
+  const [loadedProjects, setLoadedProjects] = useState<Set<string>>(new Set());
+  // iframe refs - 用于保持状态
+  const iframeRefs = useRef<{ [key: string]: HTMLIFrameElement | null }>({});
 
-  const [projectUrl, setProjectUrl] = useState<string | null>(null);
+  // 打开项目（在当前窗口的 iframe 中加载）
+  const openProject = (project: ProjectConfig) => {
+    console.log('🚀 正在打开项目:', project.name);
 
-  const handleUrlChange = (newUrl: string): void => {
-    console.log('URL 改变为:', newUrl);
-    // 外部 http/https 直接新窗口打开；asset:// 协议的内嵌 iframe 展示
-    if (newUrl.startsWith('http://') || newUrl.startsWith('https://')) {
-      window.open(newUrl, '_blank');
+    // 如果项目已经加载过，直接切换，不显示 loading
+    if (loadedProjects.has(project.id)) {
+      console.log('✅ 项目已加载，直接切换:', project.name);
+      setCurrentProject(project.id);
     } else {
-      setProjectUrl(newUrl);
-    }
-  };
-
-  const handleNavigate = (url: string, action?: 'back' | 'forward' | 'refresh' | 'home'): void => {
-    console.log(`导航: ${action || 'direct'} -> ${url}`);
-    if (action === 'refresh') {
-      // 刷新当前页面
-      window.location.reload();
-    } else {
-      // 其他导航操作
-      handleUrlChange(url);
-    }
-  };
-
-  // 打开项目（使用独立窗口，避免 iframe 路径问题）
-  const openProject = async (project: ProjectConfig) => {
-    try {
+      // 新项目，显示 loading
       setLoading(project.id);
-      console.log('🚀 正在打开项目:', project.name);
+      setCurrentProject(project.id);
+    }
+  };
 
-      // 调用 Rust 命令创建新窗口，传递窗口配置
-      await invoke('open_project', {
-        projectName: project.id,
-        windowConfig: project.windowConfig || null
-      });
+  // iframe 加载完成
+  const handleIframeLoad = (projectId: string) => {
+    console.log('✅ 项目加载完成:', projectId);
 
+    // 标记项目已加载
+    setLoadedProjects(prev => new Set(prev).add(projectId));
 
-
-      console.log('✅ 项目窗口创建成功:', project.name);
-      setLoading(null);
-
-    } catch (error) {
-      console.error('💥 打开项目失败:', error);
-      alert(`打开项目失败: ${error}`);
+    // 清除 loading
+    if (projectId === loading) {
       setLoading(null);
     }
   };
 
-  // 添加一个测试函数
-  const testAssetAccess = () => {
-    const testPaths = [
-      'studio/dist/index.html',
-      '/studio/dist/index.html',
-      'resources/studio/dist/index.html'
-    ];
-
-    testPaths.forEach(testPath => {
-      const testUrl = convertFileSrc(testPath);
-      console.log(`Test path: ${testPath} -> ${testUrl}`);
-    });
+  // iframe 加载出错
+  const handleIframeError = (projectId: string, error: any) => {
+    console.error('❌ 项目加载失败:', projectId, error);
+    if (projectId === currentProject) {
+      setLoading(null);
+    }
+    alert(`加载项目失败: ${projectId}`);
   };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      {/* 测试按钮 */}
-      <button
-        onClick={testAssetAccess}
-        style={{ marginBottom: '20px', padding: '10px', background: '#f0f0f0' }}
-      >
-        🧪 测试 Asset 路径转换（查看控制台）
-      </button>
-      {/* <iframe src="project1/dist/index.html"></iframe> */}
-
-      {/* 项目选择器 */}
-      <div style={{ marginBottom: '20px' }}>
-        <h2>选择一个项目打开：</h2>
-        <div className="row" style={{ gap: 20, flexDirection: 'column', alignItems: 'stretch' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      overflow: 'hidden'
+    }}>
+      {/* 顶部导航栏 */}
+      <nav style={{
+        padding: '10px',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+        flexShrink: 0
+      }}>
+        {/* 项目切换按钮 */}
+        <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
           {projects.map(project => (
             <button
               key={project.id}
               onClick={() => openProject(project)}
               disabled={loading === project.id}
               style={{
-                padding: '20px',
+                padding: '12px 24px',
                 fontSize: '16px',
                 cursor: loading === project.id ? 'wait' : 'pointer',
-                background: loading === project.id
-                  ? 'linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%)'
-                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: 'white',
+                background: currentProject === project.id
+                  ? 'white'
+                  : 'rgba(255, 255, 255, 0.2)',
+                color: currentProject === project.id
+                  ? '#667eea'
+                  : 'white',
                 border: 'none',
-                borderRadius: '12px',
+                borderRadius: '8px',
                 fontWeight: '600',
                 transition: 'all 0.3s ease',
-                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                textAlign: 'left'
+                boxShadow: currentProject === project.id
+                  ? '0 4px 15px rgba(0, 0, 0, 0.2)'
+                  : 'none',
+                transform: currentProject === project.id
+                  ? 'translateY(-2px)'
+                  : 'none'
+              }}
+              onMouseEnter={(e) => {
+                if (currentProject !== project.id && loading !== project.id) {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentProject !== project.id) {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }
               }}
             >
-              <div style={{ fontSize: '18px', marginBottom: '5px' }}>
-                {loading === project.id ? '⏳ 加载中...' : '🚀'} {project.name}
-              </div>
-              <div style={{ fontSize: '14px', opacity: 0.9 }}>
-                {project.description}
-              </div>
+              {loading === project.id ? '⏳ 加载中...' : project.name}
             </button>
           ))}
-
         </div>
+      </nav>
+
+      {/* iframe 容器 */}
+      <div style={{
+        flex: 1,
+        position: 'relative',
+        background: '#f5f5f5',
+        overflow: 'hidden'
+      }}>
+        {currentProject ? (
+          // 懒加载策略：只渲染已经访问过的项目
+          <>
+            {projects
+              .filter(project => loadedProjects.has(project.id) || project.id === currentProject)
+              .map(project => (
+                <iframe
+                  key={project.id}
+                  ref={(el) => { iframeRefs.current[project.id] = el; }}
+                  src={`myapp://${project.id}/`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    display: currentProject === project.id ? 'block' : 'none',
+                    background: 'white'
+                  }}
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation allow-downloads"
+                  onLoad={() => handleIframeLoad(project.id)}
+                  onError={(e) => handleIframeError(project.id, e)}
+                  title={`${project.name} - 项目窗口`}
+                />
+              ))}
+
+            {/* 加载遮罩 */}
+            {loading && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                background: 'rgba(255, 255, 255, 0.9)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000
+              }}>
+                <div style={{
+                  width: '60px',
+                  height: '60px',
+                  border: '4px solid #f3f3f3',
+                  borderTop: '4px solid #667eea',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+                <style>{`
+                  @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                `}</style>
+                <p style={{
+                  marginTop: '20px',
+                  fontSize: '18px',
+                  color: '#667eea',
+                  fontWeight: '600'
+                }}>
+                  正在加载项目...
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          // 欢迎页面
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            padding: '40px'
+          }}>
+            <div style={{
+              fontSize: '64px',
+              marginBottom: '20px'
+            }}>
+              🚀
+            </div>
+            <h2 style={{
+              fontSize: '32px',
+              color: '#333',
+              marginBottom: '10px'
+            }}>
+              欢迎使用项目管理器
+            </h2>
+            <p style={{
+              fontSize: '18px',
+              color: '#666',
+              marginBottom: '40px'
+            }}>
+              点击上方按钮选择一个项目开始
+            </p>
+
+            {/* 项目卡片 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '20px',
+              width: '100%',
+              maxWidth: '1200px'
+            }}>
+              {projects.map(project => (
+                <div
+                  key={project.id}
+                  onClick={() => openProject(project)}
+                  style={{
+                    padding: '30px',
+                    background: 'white',
+                    borderRadius: '12px',
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: '2px solid transparent'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-5px)';
+                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(102, 126, 234, 0.3)';
+                    e.currentTarget.style.borderColor = '#667eea';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.1)';
+                    e.currentTarget.style.borderColor = 'transparent';
+                  }}
+                >
+                  <h3 style={{
+                    fontSize: '24px',
+                    color: '#667eea',
+                    marginBottom: '10px'
+                  }}>
+                    {project.name}
+                  </h3>
+                  <p style={{
+                    fontSize: '16px',
+                    color: '#666',
+                    lineHeight: '1.5'
+                  }}>
+                    {project.description}
+                  </p>
+                  <div style={{
+                    marginTop: '20px',
+                    fontSize: '14px',
+                    color: '#999'
+                  }}>
+                    点击打开 →
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {projectUrl ? (
-        <div
-          style={{
-            marginTop: 24,
-            width: '100%',
-            height: '720px',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
-            border: '1px solid #e2e8f0',
-            background: '#f8fafc'
-          }}
-        >
-          <iframe
-            title="project-frame"
-            src={projectUrl}
-            style={{ width: '100%', height: '100%', border: 'none' }}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation"
-            onLoad={() => {
-              console.log('✅ iframe 加载完成:', projectUrl);
-              // 尝试访问 iframe 内容，检查是否有错误
-              try {
-                const iframe = document.querySelector('iframe[title="project-frame"]') as HTMLIFrameElement;
-                if (iframe?.contentWindow) {
-                  console.log('✅ iframe 内容窗口可访问');
-                }
-              } catch (e) {
-                console.warn('⚠️ 无法访问 iframe 内容（可能是跨域限制）:', e);
-              }
-            }}
-            onError={(e) => {
-              console.error('❌ iframe 加载错误:', e);
-              console.error('❌ 错误详情:', {
-                src: projectUrl,
-                error: e
-              });
-            }}
-          />
+      {/* 底部状态栏 */}
+      {/* {currentProject && (
+        <div style={{
+          padding: '10px 20px',
+          background: '#2d3748',
+          color: 'white',
+          fontSize: '14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div>
+            当前项目: <strong>{projects.find(p => p.id === currentProject)?.name}</strong>
+          </div>
+          <div style={{ opacity: 0.7 }}>
+            协议: myapp://{currentProject}/
+          </div>
         </div>
-      ) : (
-        <div style={{ marginTop: 24, color: '#64748b' }}>
-          请选择上方的项目以加载对应资源
-        </div>
-      )}
-
-      {/* 浏览器导航栏 */}
-      <div style={{ marginTop: '30px' }}>
-        <BrowserNavbar
-          initialUrl="http://localhost:1420/"
-          onUrlChange={handleUrlChange}
-          onNavigate={handleNavigate}
-        />
-      </div>
-    </main>
+      )} */}
+    </div>
   );
 }
 
